@@ -53,7 +53,7 @@ def create_constraint_influence_driver(ob, cns, driver_data_path, base_influence
     targ.data_path = driver_data_path
 
     if base_influence != 1.0:
-        fmod = fcurve.modifiers[0]
+        fmod = fcurve.modifiers[0] if len(fcurve.modifiers) > 0 else fcurve.modifiers.new('GENERATOR')
         fmod.mode = 'POLYNOMIAL'
         fmod.poly_order = 1
         fmod.coefficients = (0, base_influence)
@@ -1251,6 +1251,20 @@ class ArmatureGenerator(object):
                 self.ob.location = object_location
 
 
+def default_bones_position():
+    return {
+        'Body': mathutils.Vector((0.0, 0, .8)),
+        'Wheel.Ft.L': mathutils.Vector((0.9, -2, .5)),
+        'Wheel.Ft.R': mathutils.Vector((-.9, -2, .5)),
+        'Wheel.Bk.L': mathutils.Vector((0.9, 2, .5)),
+        'Wheel.Bk.R': mathutils.Vector((-.9, 2, .5)),
+        'WheelBrake.Ft.L': mathutils.Vector((0.8, -2, .5)),
+        'WheelBrake.Ft.R': mathutils.Vector((-.8, -2, .5)),
+        'WheelBrake.Bk.L': mathutils.Vector((0.8, 2, .5)),
+        'WheelBrake.Bk.R': mathutils.Vector((-.8, 2, .5))
+    }
+
+
 class OBJECT_OT_armatureCarDeformationRig(bpy.types.Operator):
     bl_idname = "object.armature_car_deformation_rig"
     bl_label = "Add car deformation rig"
@@ -1325,17 +1339,7 @@ class OBJECT_OT_armatureCarDeformationRig(bpy.types.Operator):
         layout.prop(self, 'back_wheel_brakes_pos_delta')
 
     def invoke(self, context, event):
-        self.bones_position = {
-            'Body': mathutils.Vector((0.0, 0, .8)),
-            'Wheel.Ft.L': mathutils.Vector((0.9, -2, .5)),
-            'Wheel.Ft.R': mathutils.Vector((-.9, -2, .5)),
-            'Wheel.Bk.L': mathutils.Vector((0.9, 2, .5)),
-            'Wheel.Bk.R': mathutils.Vector((-.9, 2, .5)),
-            'WheelBrake.Ft.L': mathutils.Vector((0.8, -2, .5)),
-            'WheelBrake.Ft.R': mathutils.Vector((-.8, -2, .5)),
-            'WheelBrake.Bk.L': mathutils.Vector((0.8, 2, .5)),
-            'WheelBrake.Bk.R': mathutils.Vector((-.8, 2, .5))
-        }
+        self.bones_position = default_bones_position()
         self.target_objects_name = {}
 
         has_body_target = self._find_target_object(context, 'Body')
@@ -1380,6 +1384,11 @@ class OBJECT_OT_armatureCarDeformationRig(bpy.types.Operator):
 
     def execute(self, context):
         """Creates the meta rig with basic bones"""
+        if not hasattr(self, 'bones_position') or not self.bones_position:
+            self.bones_position = default_bones_position()
+        if not hasattr(self, 'target_objects_name'):
+            self.target_objects_name = {}
+
         amt = bpy.data.armatures.new('Car Rig Data')
         amt['Car Rig'] = False
 
@@ -1441,10 +1450,14 @@ class OBJECT_OT_armatureCarDeformationRig(bpy.types.Operator):
         previous_wheel = None
         previous_wheel_default_pos = None
         for wheel_name in name_range(base_wheel_name, nb_wheels):
-            if wheel_name not in self.bones_position and previous_wheel is not None and previous_wheel_default_pos is not None:
-                wheel_position = previous_wheel_default_pos.copy()
-                wheel_position.y += abs(previous_wheel.head.z * 2.2)
-                self.bones_position[wheel_name] = wheel_position
+            if wheel_name not in self.bones_position:
+                if previous_wheel is not None and previous_wheel_default_pos is not None:
+                    wheel_position = previous_wheel_default_pos.copy()
+                    wheel_position.y += abs(previous_wheel.head.z * 2.2)
+                    self.bones_position[wheel_name] = wheel_position
+                else:
+                    base_name = re.sub(r'\.\d+$', '', wheel_name)
+                    self.bones_position[wheel_name] = self.bones_position.get(base_name, mathutils.Vector((0.9, 0.0, 0.5))).copy()
             previous_wheel = self._create_bone(rig, wheel_name, delta_pos)
             previous_wheel_default_pos = self.bones_position.get(wheel_name, previous_wheel.head.copy())
 
@@ -1517,15 +1530,19 @@ class POSE_OT_carAnimationAddBrakeWheelBones(bpy.types.Operator):
 
 
 def register():
-    bpy.utils.register_class(POSE_OT_carAnimationRigGenerate)
-    bpy.utils.register_class(OBJECT_OT_armatureCarDeformationRig)
-    bpy.utils.register_class(POSE_OT_carAnimationAddBrakeWheelBones)
+    for c in (POSE_OT_carAnimationRigGenerate, OBJECT_OT_armatureCarDeformationRig, POSE_OT_carAnimationAddBrakeWheelBones):
+        try:
+            bpy.utils.register_class(c)
+        except ValueError:
+            pass
 
 
 def unregister():
-    bpy.utils.unregister_class(POSE_OT_carAnimationAddBrakeWheelBones)
-    bpy.utils.unregister_class(OBJECT_OT_armatureCarDeformationRig)
-    bpy.utils.unregister_class(POSE_OT_carAnimationRigGenerate)
+    for c in (POSE_OT_carAnimationAddBrakeWheelBones, OBJECT_OT_armatureCarDeformationRig, POSE_OT_carAnimationRigGenerate):
+        try:
+            bpy.utils.unregister_class(c)
+        except RuntimeError:
+            pass
 
 
 if __name__ == "__main__":

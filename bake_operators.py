@@ -698,15 +698,19 @@ class ANIM_OT_carClearSteeringWheelsRotation(bpy.types.Operator):
 
 
 def register():
-    bpy.utils.register_class(ANIM_OT_carWheelsRotationBake)
-    bpy.utils.register_class(ANIM_OT_carSteeringBake)
-    bpy.utils.register_class(ANIM_OT_carClearSteeringWheelsRotation)
+    for c in (ANIM_OT_carWheelsRotationBake, ANIM_OT_carSteeringBake, ANIM_OT_carClearSteeringWheelsRotation):
+        try:
+            bpy.utils.register_class(c)
+        except ValueError:
+            pass
 
 
 def unregister():
-    bpy.utils.unregister_class(ANIM_OT_carClearSteeringWheelsRotation)
-    bpy.utils.unregister_class(ANIM_OT_carSteeringBake)
-    bpy.utils.unregister_class(ANIM_OT_carWheelsRotationBake)
+    for c in (ANIM_OT_carClearSteeringWheelsRotation, ANIM_OT_carSteeringBake, ANIM_OT_carWheelsRotationBake):
+        try:
+            bpy.utils.unregister_class(c)
+        except RuntimeError:
+            pass
 
 
 if __name__ == "__main__":

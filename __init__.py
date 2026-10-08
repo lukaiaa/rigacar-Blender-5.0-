@@ -16,7 +16,17 @@
 #
 # ##### END GPL LICENSE BLOCK #####
 
-# <pep8 compliant>
+bl_info = {
+    "name": "Rigacar",
+    "author": "David Gayerie (fix by Mister Guide, patched for Blender 5.1.2)",
+    "version": (1, 0, 4),
+    "blender": (5, 0, 0),
+    "location": "View3D > Add > Armature > Car (deformation rig)",
+    "description": "Rigging, animation controls and baking tools for wheeled vehicles",
+    "warning": "",
+    "doc_url": "https://digicreatures.net/articles/rigacar.html",
+    "category": "Rigging",
+}
 
 import bpy
 
@@ -263,9 +273,14 @@ def register():
     except Exception:
         pass
 
-    bpy.types.VIEW3D_MT_armature_add.append(menu_entries)
+    if menu_entries not in bpy.types.VIEW3D_MT_armature_add._dyn_ui_initialize():
+        bpy.types.VIEW3D_MT_armature_add.append(menu_entries)
+
     for c in classes:
-        bpy.utils.register_class(c)
+        try:
+            bpy.utils.register_class(c)
+        except ValueError:
+            pass
     car_rig.register()
     bake_operators.register()
 

@@ -1,6 +1,14 @@
 Rigacar - Changelog
 ====================
 
+Version 1.0.4:
+- Added full verified compatibility with Blender 5.1.2.
+- Fixed blender_manifest.toml schema validation errors in Blender 5.1 (tagline character limits, permissions type, set blender_version_min = "5.0.0").
+- Restored bl_info dictionary in __init__.py for backward compatibility with classic add-on workflows.
+- Fixed AttributeError: 'OBJECT_OT_armatureCarDeformationRig' object has no attribute 'bones_position' by initializing default_bones_position() in execute() when invoked without dialog.
+- Hardened create_constraint_influence_driver() against empty driver fcurve modifiers.
+- Made class registration and unregistration idempotent across modules to prevent ValueError / RuntimeError on re-registration.
+
 Version 1.0.3:
 - Fixed AttributeError: 'Bone' object has no attribute 'select' by ensuring bone selection/deselection occurs safely in Pose Mode across all Blender 4.0 - 5.2+ API versions.
 - Added select_bone() and is_bone_selected() helpers to handle PoseBone and Bone selection abstractions uniformly.
