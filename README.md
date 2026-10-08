@@ -31,7 +31,7 @@ Rigacar quickly generates complete vehicle animation rigs with automated wheel r
 ## 📦 Installation
 
 ### Option A: Install from Zip (Blender 4.2 / 5.x)
-1. Download **`rigacar-1.0.4.zip`** from the [Releases](https://github.com/lukaiaa/rigacar/releases) page.
+1. Download **`rigacar-1.0.4.zip`** from the [Releases](https://github.com/lukaiaa/rigacar-Blender-5.0-/releases) page.
 2. In Blender, go to **Edit → Preferences → Add-ons / Extensions**.
 3. Click the dropdown menu in the upper-right corner (arrow icon) and choose **Install from Disk...**.
 4. Select `rigacar-1.0.4.zip` and enable **Rigacar**.
