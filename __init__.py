@@ -35,10 +35,12 @@ if "bake_operators" in locals():
     importlib.reload(bake_operators)
     importlib.reload(car_rig)
     importlib.reload(widgets)
+    importlib.reload(car_parts)
 else:
     from . import bake_operators
     from . import car_rig
     from . import widgets
+    from . import car_parts
 
 
 translations_dict = {
@@ -105,6 +107,22 @@ translations_dict = {
         ("*", "Influence of the dampers over the roll of the body"): "Влияние амортизаторов на поперечный крен кузова (Roll)",
         ("*", "Animation property for wheel spinning"): "Анимационное свойство для вращения колеса",
         ("*", "Animation property for steering"): "Анимационное свойство для поворота руля",
+        ("*", "Car Parts Setup"): "Выбор частей автомобиля",
+        ("*", "Body / Chassis"): "Кузов / Шасси",
+        ("*", "Front Left"): "Переднее левое",
+        ("*", "Front Right"): "Переднее правое",
+        ("*", "Back Left"): "Заднее левое",
+        ("*", "Back Right"): "Заднее правое",
+        ("*", "Auto-Detect Parts"): "Авто-определение частей",
+        ("*", "Clear"): "Очистить",
+        ("*", "Create Deformation Rig"): "Создать деформационный риг",
+        ("*", "Create & Generate Animation Rig"): "Создать и настроить анимационный риг",
+        ("*", "Snap Bones to Chosen Parts"): "Выровнять кости по частям",
+        ("*", "Attach Parts to Rig"): "Привязать части к ригу",
+        ("*", "Re-attach Parts to Rig"): "Повторно привязать части",
+        ("*", "Deformation Rig Active"): "Деформационный риг активен",
+        ("*", "Animation Rig Active"): "Анимационный риг активен",
+        ("*", "Include Brakes / Calipers"): "Включить тормоза / суппорты",
     }
 }
 
@@ -283,9 +301,11 @@ def register():
             pass
     car_rig.register()
     bake_operators.register()
+    car_parts.register()
 
 
 def unregister():
+    car_parts.unregister()
     bake_operators.unregister()
     car_rig.unregister()
     for c in classes:

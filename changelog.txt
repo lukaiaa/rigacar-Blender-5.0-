@@ -2,6 +2,10 @@ Rigacar - Changelog
 ====================
 
 Version 1.0.4:
+- Added interactive "Car Parts Setup" UI panel in the 3D View Sidebar (N-panel -> Rigacar) with object pickers / eyedroppers for Body, Wheels (FL, FR, BL, BR), and Brakes.
+- Added "Auto-Detect Parts" operator with smart name and spatial geometry heuristics to automatically identify and assign vehicle parts from selection or scene.
+- Added one-click "Create Rig from Chosen Parts" and "Create & Generate Animation Rig" operators with automatic mesh parenting and exact bone dimension snapping.
+- Added "Snap Bones to Chosen Parts" and "Attach Parts to Rig" utilities for active armatures.
 - Added full verified compatibility with Blender 5.1.2.
 - Fixed blender_manifest.toml schema validation errors in Blender 5.1 (tagline character limits, permissions type, set blender_version_min = "5.0.0").
 - Restored bl_info dictionary in __init__.py for backward compatibility with classic add-on workflows.
