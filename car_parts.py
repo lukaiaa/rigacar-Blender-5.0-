@@ -377,52 +377,117 @@ class RigacarCarPartsSettings(bpy.types.PropertyGroup):
 # Rig Creation & Alignment Logic
 # ---------------------------------------------------------------------------
 
-def create_door_hinge_bone(edit_bones, bone_name, door_obj, parent_bone, is_left=True):
-    """Create a vertical hinge bone for a car door allowing natural rotation to open."""
+def get_door_hinge_pivot(door_obj, is_left=True):
+    """
+    Calculate the exact hinge pivot for a car door.
+    Prioritizes artist-defined object origin if placed at the hinge line.
+    Otherwise calculates from front seam geometry without side mirror interference.
+    """
     b = get_object_world_bounds(door_obj)
     if not b:
-        return None
-    # Front of door is min_y (in Rigacar -Y is front)
-    hinge_x = b[1] if is_left else b[0]
-    hinge_y = b[2]
-    hinge_z = (b[4] + b[5]) / 2.0
-    bone = edit_bones.new(bone_name)
-    bone.head = mathutils.Vector((hinge_x, hinge_y, hinge_z))
-    bone.tail = mathutils.Vector((hinge_x, hinge_y, b[5]))
-    bone.parent = parent_bone
-    bone.use_deform = True
-    return bone
+        return mathutils.Vector((0.0, 0.0, 0.0)), mathutils.Vector((0.0, 0.0, 0.35))
+
+    origin = door_obj.matrix_world.to_translation()
+    center = get_object_world_center(door_obj)
+
+    # Check if artist placed the origin at the front hinge
+    margin = 0.08
+    is_in_bounds = (b[0] - margin <= origin.x <= b[1] + margin and
+                    b[2] - margin <= origin.y <= b[3] + margin and
+                    b[4] - margin <= origin.z <= b[5] + margin)
+    is_not_world_origin = origin.length > 0.05 or (center and center.length < 0.2)
+    front_half_y = b[2] + (b[3] - b[2]) * 0.35
+
+    if is_in_bounds and is_not_world_origin and origin.y <= front_half_y:
+        head = origin.copy()
+    else:
+        # Calculate from front geometry without mirror distortion
+        mw = door_obj.matrix_world
+        front_threshold = b[2] + 0.08
+        front_verts = [mw @ v.co for v in door_obj.data.vertices if (mw @ v.co).y <= front_threshold]
+        if front_verts:
+            hinge_x = max(v.x for v in front_verts) if is_left else min(v.x for v in front_verts)
+            hinge_y = min(v.y for v in front_verts)
+        else:
+            hinge_x = b[1] if is_left else b[0]
+            hinge_y = b[2]
+        hinge_z = b[4] + (b[5] - b[4]) * 0.35
+        head = mathutils.Vector((hinge_x, hinge_y, hinge_z))
+
+    bone_len = max(0.25, min(0.45, (b[5] - b[4]) * 0.35))
+    tail = head + mathutils.Vector((0.0, 0.0, bone_len))
+    return head, tail
 
 
-def create_hood_hinge_bone(edit_bones, hood_obj, parent_bone):
-    """Create a horizontal hinge bone along the rear/windshield edge of the hood."""
+def get_hood_hinge_pivot(hood_obj):
+    """Calculate horizontal hinge pivot along the rear edge (+Y) of the hood."""
     b = get_object_world_bounds(hood_obj)
     if not b:
-        return None
-    center_x = (b[0] + b[1]) / 2.0
-    hinge_y = b[3]  # Rear of hood (+Y)
-    hinge_z = b[5]
-    bone = edit_bones.new('Hood')
-    bone.head = mathutils.Vector((center_x, hinge_y, hinge_z))
-    bone.tail = mathutils.Vector((center_x + 0.3, hinge_y, hinge_z))
-    bone.parent = parent_bone
-    bone.use_deform = True
-    return bone
+        return mathutils.Vector((0.0, 0.0, 0.0)), mathutils.Vector((0.3, 0.0, 0.0))
+    origin = hood_obj.matrix_world.to_translation()
+    margin = 0.08
+    is_in_bounds = (b[0] - margin <= origin.x <= b[1] + margin and
+                    b[2] - margin <= origin.y <= b[3] + margin and
+                    b[4] - margin <= origin.z <= b[5] + margin)
+    is_near_rear = origin.y >= b[2] + (b[3] - b[2]) * 0.65
+    if is_in_bounds and is_near_rear:
+        head = origin.copy()
+    else:
+        head = mathutils.Vector(((b[0] + b[1]) / 2.0, b[3], b[5]))
+    tail = head + mathutils.Vector((0.3, 0.0, 0.0))
+    return head, tail
 
 
-def create_trunk_hinge_bone(edit_bones, trunk_obj, parent_bone):
-    """Create a horizontal hinge bone along the front/top edge of the trunk."""
+def get_trunk_hinge_pivot(trunk_obj):
+    """Calculate horizontal hinge pivot along the front/top edge (+Z, -Y rel to trunk) of the trunk."""
     b = get_object_world_bounds(trunk_obj)
     if not b:
-        return None
-    center_x = (b[0] + b[1]) / 2.0
-    hinge_y = b[2]  # Front of trunk (-Y relative to rear)
-    hinge_z = b[5]
-    bone = edit_bones.new('Trunk')
-    bone.head = mathutils.Vector((center_x, hinge_y, hinge_z))
-    bone.tail = mathutils.Vector((center_x + 0.3, hinge_y, hinge_z))
-    bone.parent = parent_bone
-    bone.use_deform = True
+        return mathutils.Vector((0.0, 0.0, 0.0)), mathutils.Vector((0.3, 0.0, 0.0))
+    origin = trunk_obj.matrix_world.to_translation()
+    margin = 0.08
+    is_in_bounds = (b[0] - margin <= origin.x <= b[1] + margin and
+                    b[2] - margin <= origin.y <= b[3] + margin and
+                    b[4] - margin <= origin.z <= b[5] + margin)
+    is_near_top = origin.z >= b[4] + (b[5] - b[4]) * 0.65
+    if is_in_bounds and is_near_top:
+        head = origin.copy()
+    else:
+        head = mathutils.Vector(((b[0] + b[1]) / 2.0, b[2], b[5]))
+    tail = head + mathutils.Vector((0.3, 0.0, 0.0))
+    return head, tail
+
+
+def get_window_bone_position(window_obj):
+    """Calculate window bone position sitting at the base of the window glass."""
+    b = get_object_world_bounds(window_obj)
+    if not b:
+        return mathutils.Vector((0.0, 0.0, 1.0)), mathutils.Vector((0.0, 0.0, 1.25))
+    center = get_object_world_center(window_obj)
+    origin = window_obj.matrix_world.to_translation()
+    margin = 0.03
+    is_origin_inside = (b[0] - margin <= origin.x <= b[1] + margin and
+                        b[2] - margin <= origin.y <= b[3] + margin and
+                        b[4] - margin <= origin.z <= b[5] + margin)
+    if is_origin_inside:
+        head = origin.copy()
+    else:
+        head = mathutils.Vector((center.x, center.y, b[4]))
+    bone_len = max(0.15, min(0.35, (b[5] - b[4]) * 0.6))
+    tail = head + mathutils.Vector((0.0, 0.0, bone_len))
+    return head, tail
+
+
+def get_or_create_bone(edit_bones, bone_name, head, tail, parent_bone=None, use_deform=True):
+    """Retrieve existing edit bone or create a new one, setting its transform and hierarchy."""
+    if bone_name in edit_bones:
+        bone = edit_bones[bone_name]
+    else:
+        bone = edit_bones.new(bone_name)
+    bone.head = head
+    bone.tail = tail
+    if parent_bone:
+        bone.parent = parent_bone
+    bone.use_deform = use_deform
     return bone
 
 
@@ -487,28 +552,49 @@ def build_rig_from_parts(context, generate_anim=False):
             b_brk.tail.y += 0.2
 
     # 4. Doors Hinge Bones
+    door_bones = {}
     if settings.show_doors:
-        if settings.door_ft_l:
-            create_door_hinge_bone(edit_bones, 'Door.Ft.L', settings.door_ft_l, b_body, is_left=True)
-        if settings.door_ft_r:
-            create_door_hinge_bone(edit_bones, 'Door.Ft.R', settings.door_ft_r, b_body, is_left=False)
-        if settings.door_bk_l:
-            create_door_hinge_bone(edit_bones, 'Door.Bk.L', settings.door_bk_l, b_body, is_left=True)
-        if settings.door_bk_r:
-            create_door_hinge_bone(edit_bones, 'Door.Bk.R', settings.door_bk_r, b_body, is_left=False)
+        doors_info = [
+            ('Door.Ft.L', settings.door_ft_l, True),
+            ('Door.Ft.R', settings.door_ft_r, False),
+            ('Door.Bk.L', settings.door_bk_l, True),
+            ('Door.Bk.R', settings.door_bk_r, False),
+        ]
+        for b_name, obj, is_l in doors_info:
+            if obj:
+                h, t = get_door_hinge_pivot(obj, is_l)
+                bone = get_or_create_bone(edit_bones, b_name, h, t, parent_bone=b_body, use_deform=True)
+                door_bones[b_name] = bone
 
     # 5. Hood & Trunk Hinge Bones
     if settings.show_hood_trunk:
         if settings.hood:
-            create_hood_hinge_bone(edit_bones, settings.hood, b_body)
+            h, t = get_hood_hinge_pivot(settings.hood)
+            get_or_create_bone(edit_bones, 'Hood', h, t, parent_bone=b_body, use_deform=True)
         if settings.trunk:
-            create_trunk_hinge_bone(edit_bones, settings.trunk, b_body)
+            h, t = get_trunk_hinge_pivot(settings.trunk)
+            get_or_create_bone(edit_bones, 'Trunk', h, t, parent_bone=b_body, use_deform=True)
+
+    # 6. Windows Bones (parented to doors so they swing open with door, or to body)
+    if settings.show_windows:
+        windows_info = [
+            ('Window.Ft.L', settings.window_ft_l, 'Door.Ft.L'),
+            ('Window.Ft.R', settings.window_ft_r, 'Door.Ft.R'),
+            ('Window.Bk.L', settings.window_bk_l, 'Door.Bk.L'),
+            ('Window.Bk.R', settings.window_bk_r, 'Door.Bk.R'),
+            ('Window.Windshield', settings.windshield, None),
+        ]
+        for b_name, obj, parent_door_name in windows_info:
+            if obj:
+                h, t = get_window_bone_position(obj)
+                parent_bone = door_bones.get(parent_door_name) or b_body
+                get_or_create_bone(edit_bones, b_name, h, t, parent_bone=parent_bone, use_deform=True)
 
     for b in edit_bones:
         b.select = False
     bpy.ops.object.mode_set(mode='OBJECT')
 
-    # 6. Parent Chosen Objects
+    # Parent Chosen Objects
     if settings.body:
         parent_object_to_bone(settings.body, rig, 'DEF-Body')
     if settings.wheel_ft_l:
@@ -532,38 +618,35 @@ def build_rig_from_parts(context, generate_anim=False):
 
     # Parent Doors
     if settings.show_doors:
-        if settings.door_ft_l:
-            parent_object_to_bone(settings.door_ft_l, rig, 'Door.Ft.L')
-        if settings.door_ft_r:
-            parent_object_to_bone(settings.door_ft_r, rig, 'Door.Ft.R')
-        if settings.door_bk_l:
-            parent_object_to_bone(settings.door_bk_l, rig, 'Door.Bk.L')
-        if settings.door_bk_r:
-            parent_object_to_bone(settings.door_bk_r, rig, 'Door.Bk.R')
+        for slot, b_name in (('door_ft_l', 'Door.Ft.L'), ('door_ft_r', 'Door.Ft.R'),
+                             ('door_bk_l', 'Door.Bk.L'), ('door_bk_r', 'Door.Bk.R')):
+            obj = getattr(settings, slot, None)
+            if obj and b_name in rig.data.bones:
+                parent_object_to_bone(obj, rig, b_name)
 
     # Parent Hood & Trunk
     if settings.show_hood_trunk:
-        if settings.hood:
+        if settings.hood and 'Hood' in rig.data.bones:
             parent_object_to_bone(settings.hood, rig, 'Hood')
-        if settings.trunk:
+        if settings.trunk and 'Trunk' in rig.data.bones:
             parent_object_to_bone(settings.trunk, rig, 'Trunk')
 
-    # Parent Windows (door windows to doors so they swing open together, fixed windows to body)
+    # Parent Windows to dedicated Window bones
     if settings.show_windows:
-        if settings.window_ft_l:
-            target_bone = 'Door.Ft.L' if ('Door.Ft.L' in rig.data.bones) else 'DEF-Body'
-            parent_object_to_bone(settings.window_ft_l, rig, target_bone)
-        if settings.window_ft_r:
-            target_bone = 'Door.Ft.R' if ('Door.Ft.R' in rig.data.bones) else 'DEF-Body'
-            parent_object_to_bone(settings.window_ft_r, rig, target_bone)
-        if settings.window_bk_l:
-            target_bone = 'Door.Bk.L' if ('Door.Bk.L' in rig.data.bones) else 'DEF-Body'
-            parent_object_to_bone(settings.window_bk_l, rig, target_bone)
-        if settings.window_bk_r:
-            target_bone = 'Door.Bk.R' if ('Door.Bk.R' in rig.data.bones) else 'DEF-Body'
-            parent_object_to_bone(settings.window_bk_r, rig, target_bone)
+        for slot, b_name, fallback_door in (
+            ('window_ft_l', 'Window.Ft.L', 'Door.Ft.L'),
+            ('window_ft_r', 'Window.Ft.R', 'Door.Ft.R'),
+            ('window_bk_l', 'Window.Bk.L', 'Door.Bk.L'),
+            ('window_bk_r', 'Window.Bk.R', 'Door.Bk.R'),
+        ):
+            obj = getattr(settings, slot, None)
+            if obj:
+                tgt = b_name if b_name in rig.data.bones else (fallback_door if fallback_door in rig.data.bones else 'DEF-Body')
+                parent_object_to_bone(obj, rig, tgt)
+
         if settings.windshield:
-            parent_object_to_bone(settings.windshield, rig, 'DEF-Body')
+            tgt = 'Window.Windshield' if 'Window.Windshield' in rig.data.bones else 'DEF-Body'
+            parent_object_to_bone(settings.windshield, rig, tgt)
 
     bpy.context.view_layer.objects.active = rig
     rig.select_set(True)
@@ -575,8 +658,132 @@ def build_rig_from_parts(context, generate_anim=False):
     return rig
 
 
+def snap_rig_bones_to_parts(context, rig):
+    """Align or create deformation and control bones of an existing rig to match chosen parts."""
+    if not rig or rig.type != 'ARMATURE':
+        return 0
+    if rig.data.get('Car Rig', False):
+        return -1  # Already generated animation rig
+
+    settings = context.scene.rigacar_car_parts
+
+    # Cache world matrices of all assigned objects so editing bones never causes parented meshes to shift
+    all_objs = [
+        settings.body, settings.wheel_ft_l, settings.wheel_ft_r, settings.wheel_bk_l, settings.wheel_bk_r,
+        settings.door_ft_l, settings.door_ft_r, settings.door_bk_l, settings.door_bk_r,
+        settings.hood, settings.trunk,
+        settings.window_ft_l, settings.window_ft_r, settings.window_bk_l, settings.window_bk_r, settings.windshield,
+        settings.brake_ft_l, settings.brake_ft_r, settings.brake_bk_l, settings.brake_bk_r,
+    ]
+    cached_matrices = {o: o.matrix_world.copy() for o in all_objs if o}
+
+    prev_mode = rig.mode
+    bpy.ops.object.mode_set(mode='EDIT')
+    ebs = rig.data.edit_bones
+
+    aligned = 0
+
+    # 1. Body
+    b_body = ebs.get('DEF-Body')
+    if settings.body and b_body:
+        c = get_object_world_center(settings.body)
+        b = get_object_world_bounds(settings.body)
+        length = (b[3] - b[2]) if b else 2.0
+        b_body.head = c
+        b_body.tail = c + mathutils.Vector((0, length / 2.0, 0))
+        aligned += 1
+
+    # 2. Wheels
+    wheels_map = {
+        'DEF-Wheel.Ft.L': settings.wheel_ft_l,
+        'DEF-Wheel.Ft.R': settings.wheel_ft_r,
+        'DEF-Wheel.Bk.L': settings.wheel_bk_l,
+        'DEF-Wheel.Bk.R': settings.wheel_bk_r,
+    }
+    for b_name, obj in wheels_map.items():
+        if obj and b_name in ebs:
+            c = get_object_world_center(obj)
+            r = get_wheel_radius(obj)
+            ebs[b_name].head = c
+            ebs[b_name].tail = c + mathutils.Vector((0, r, 0))
+            aligned += 1
+
+    # 3. Brakes
+    if settings.show_brakes:
+        brakes_map = {
+            'DEF-WheelBrake.Ft.L': settings.brake_ft_l,
+            'DEF-WheelBrake.Ft.R': settings.brake_ft_r,
+            'DEF-WheelBrake.Bk.L': settings.brake_bk_l,
+            'DEF-WheelBrake.Bk.R': settings.brake_bk_r,
+        }
+        for b_name, obj in brakes_map.items():
+            if obj and b_name in ebs:
+                c = get_object_world_center(obj)
+                ebs[b_name].head = c
+                ebs[b_name].tail = c + mathutils.Vector((0, 0.2, 0))
+                aligned += 1
+
+    # 4. Doors Hinge Bones
+    door_bones = {}
+    if settings.show_doors:
+        doors_info = [
+            ('Door.Ft.L', settings.door_ft_l, True),
+            ('Door.Ft.R', settings.door_ft_r, False),
+            ('Door.Bk.L', settings.door_bk_l, True),
+            ('Door.Bk.R', settings.door_bk_r, False),
+        ]
+        for b_name, obj, is_l in doors_info:
+            if obj:
+                h, t = get_door_hinge_pivot(obj, is_l)
+                bone = get_or_create_bone(ebs, b_name, h, t, parent_bone=b_body, use_deform=True)
+                door_bones[b_name] = bone
+                aligned += 1
+
+    # 5. Hood & Trunk Hinge Bones
+    if settings.show_hood_trunk:
+        if settings.hood:
+            h, t = get_hood_hinge_pivot(settings.hood)
+            get_or_create_bone(ebs, 'Hood', h, t, parent_bone=b_body, use_deform=True)
+            aligned += 1
+        if settings.trunk:
+            h, t = get_trunk_hinge_pivot(settings.trunk)
+            get_or_create_bone(ebs, 'Trunk', h, t, parent_bone=b_body, use_deform=True)
+            aligned += 1
+
+    # 6. Windows Bones (parented to corresponding doors or body)
+    if settings.show_windows:
+        windows_info = [
+            ('Window.Ft.L', settings.window_ft_l, 'Door.Ft.L'),
+            ('Window.Ft.R', settings.window_ft_r, 'Door.Ft.R'),
+            ('Window.Bk.L', settings.window_bk_l, 'Door.Bk.L'),
+            ('Window.Bk.R', settings.window_bk_r, 'Door.Bk.R'),
+            ('Window.Windshield', settings.windshield, None),
+        ]
+        for b_name, obj, parent_door_name in windows_info:
+            if obj:
+                h, t = get_window_bone_position(obj)
+                parent_bone = door_bones.get(parent_door_name) or (ebs.get(parent_door_name) if parent_door_name else None) or b_body
+                get_or_create_bone(ebs, b_name, h, t, parent_bone=parent_bone, use_deform=True)
+                aligned += 1
+
+    bpy.ops.object.mode_set(mode=prev_mode)
+
+    # Restore exact world transforms for all objects
+    for obj, mat in cached_matrices.items():
+        obj.matrix_world = mat
+
+    return aligned
+
+
 def attach_parts_to_existing_rig(context, rig):
     """Parent chosen parts to an existing car rig without modifying bone positions."""
+    if not rig or rig.type != 'ARMATURE':
+        return 0
+
+    # If the rig is a deformation rig and missing window/door bones, snap/create them first
+    if not rig.data.get('Car Rig', False):
+        snap_rig_bones_to_parts(context, rig)
+
     settings = context.scene.rigacar_car_parts
     attached = 0
 
@@ -621,58 +828,24 @@ def attach_parts_to_existing_rig(context, rig):
                 attached += 1
 
     if settings.show_windows:
-        for slot, bone in (('window_ft_l', 'Door.Ft.L'), ('window_ft_r', 'Door.Ft.R'),
-                           ('window_bk_l', 'Door.Bk.L'), ('window_bk_r', 'Door.Bk.R')):
+        for slot, bone, fallback_door in (
+            ('window_ft_l', 'Window.Ft.L', 'Door.Ft.L'),
+            ('window_ft_r', 'Window.Ft.R', 'Door.Ft.R'),
+            ('window_bk_l', 'Window.Bk.L', 'Door.Bk.L'),
+            ('window_bk_r', 'Window.Bk.R', 'Door.Bk.R'),
+        ):
             obj = getattr(settings, slot, None)
             if obj:
-                tgt = bone if bone in rig.data.bones else 'DEF-Body'
+                tgt = bone if bone in rig.data.bones else (fallback_door if fallback_door in rig.data.bones else 'DEF-Body')
                 if parent_object_to_bone(obj, rig, tgt):
                     attached += 1
-        if settings.windshield and parent_object_to_bone(settings.windshield, rig, 'DEF-Body'):
-            attached += 1
+
+        if settings.windshield:
+            tgt = 'Window.Windshield' if 'Window.Windshield' in rig.data.bones else 'DEF-Body'
+            if parent_object_to_bone(settings.windshield, rig, tgt):
+                attached += 1
 
     return attached
-
-
-def snap_rig_bones_to_parts(context, rig):
-    """Align deformation bones of an existing deformation rig to the chosen parts."""
-    if not rig or rig.type != 'ARMATURE':
-        return 0
-    if rig.data.get('Car Rig', False):
-        return -1  # Already generated animation rig
-
-    settings = context.scene.rigacar_car_parts
-    prev_mode = rig.mode
-    bpy.ops.object.mode_set(mode='EDIT')
-    ebs = rig.data.edit_bones
-
-    aligned = 0
-
-    if settings.body and 'DEF-Body' in ebs:
-        c = get_object_world_center(settings.body)
-        b = get_object_world_bounds(settings.body)
-        length = (b[3] - b[2]) if b else 2.0
-        ebs['DEF-Body'].head = c
-        ebs['DEF-Body'].tail = c + mathutils.Vector((0, length / 2.0, 0))
-        aligned += 1
-
-    wheels_map = {
-        'DEF-Wheel.Ft.L': settings.wheel_ft_l,
-        'DEF-Wheel.Ft.R': settings.wheel_ft_r,
-        'DEF-Wheel.Bk.L': settings.wheel_bk_l,
-        'DEF-Wheel.Bk.R': settings.wheel_bk_r,
-    }
-
-    for b_name, obj in wheels_map.items():
-        if obj and b_name in ebs:
-            c = get_object_world_center(obj)
-            r = get_wheel_radius(obj)
-            ebs[b_name].head = c
-            ebs[b_name].tail = c + mathutils.Vector((0, r, 0))
-            aligned += 1
-
-    bpy.ops.object.mode_set(mode=prev_mode)
-    return aligned
 
 
 # ---------------------------------------------------------------------------
