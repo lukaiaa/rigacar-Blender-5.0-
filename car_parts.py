@@ -618,7 +618,7 @@ class RIGACAR_PT_carPartsSetupView(bpy.types.Panel):
 
         # 1. Body Section
         col = layout.column(align=True)
-        col.prop(settings, "body", text="Body / Chassis", icon='CAR')
+        col.prop(settings, "body", text="Body / Chassis", icon='OBJECT_DATA')
 
         layout.separator()
 
