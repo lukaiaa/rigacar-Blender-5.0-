@@ -3,6 +3,10 @@
 [![Blender Version](https://img.shields.io/badge/Blender-4.2%20--%205.1%2B-orange.svg)](https://www.blender.org/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
+<p align="center">
+  <img src="screenshots/car_rig_showcase.png" alt="Rigacar Complete Vehicle Rig in Blender" width="620"/>
+</p>
+
 A maintained, enhanced fork of **Rigacar** updated and optimized for **Blender 4.2, 5.0, and 5.1+**.
 
 Rigacar quickly generates complete vehicle animation rigs with automated wheel rotation, suspension dynamics, ground projection, and animation baking.
@@ -29,6 +33,42 @@ Rigacar quickly generates complete vehicle animation rigs with automated wheel r
   * **Trunk & Hood:** Horizontal hinge bones for hoods and tailgates.
 * **Preserved Transform Safety:**
   * Re-snapping or modifying bones safely preserves world matrices, preventing parented meshes from drifting or jumping.
+
+---
+
+## 🎯 How to Prepare Car Parts & Set Pivots for Best Results
+
+Setting up your mesh origins (pivot points) properly ensures the generated bones align exactly with physical hinges and wheel axles:
+
+### 1. Apply Transforms First (Rule #1)
+Before rigging, select all vehicle mesh parts, press **`Ctrl + A`** and select **`Apply All Transforms`** (or at least *Rotation & Scale*).
+* Ensures all objects have a uniform scale of `(1.0, 1.0, 1.0)`.
+* Prevents skewed bones or inverted rotation directions.
+
+### 2. Door Hinge Pivots (Opening Doors)
+Car doors swing open around their vertical hinge line near the front A-pillar:
+* **Recommended (Exact Pivot):**
+  1. Select the door mesh and press **`Tab`** to enter **Edit Mode**.
+  2. Select the front vertex or vertical edge on the front seam where the door hinge attaches to the body.
+  3. Press **`Shift + S` → `Cursor to Selected`**.
+  4. Press **`Tab`** to return to **Object Mode**.
+  5. Right-click the door mesh and choose **`Set Origin` → `Origin to 3D Cursor`**.
+* **Automatic Detection:** If you keep the origin at `(0, 0, 0)`, Rigacar will automatically detect the front door seam vertices and position the vertical hinge bone there without getting pulled outwards by rearview mirrors or door handles.
+
+### 3. Wheels (Rotation Axle Pivot)
+Wheels must rotate cleanly around their exact cylindrical center:
+1. Select each wheel mesh in **Object Mode**.
+2. Right-click → **`Set Origin` → `Origin to Center of Mass (Surface)`** (or **`Origin to Geometry`**).
+3. Rigacar automatically snaps wheel bones to this exact center and calculates the wheel radius from the mesh dimensions.
+
+### 4. Windows & Glass (Roll-Down Animation)
+* Separate each movable window pane into its own mesh object.
+* You can keep the origin at the window geometry center or bottom edge.
+* Rigacar automatically creates a dedicated bone at the lower sill of the window glass, parented to the door bone. In Pose Mode, translating the window bone along local Z rolls the glass smoothly down into the door slot.
+
+### 5. Trunk / Tailgate & Hood / Bonnet
+* **Trunk / Boot:** Hinges horizontally along the top seam. In Edit Mode, place the 3D Cursor at the top edge connecting the trunk to the roof, then **Set Origin → Origin to 3D Cursor**. Rotating the bone along X opens the trunk upwards.
+* **Hood / Bonnet:** Hinges horizontally along the rear seam near the windshield base. Set the origin along that rear edge.
 
 ---
 
