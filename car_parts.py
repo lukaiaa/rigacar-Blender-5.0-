@@ -90,11 +90,9 @@ def parent_object_to_bone(obj, rig, bone_name):
 # ---------------------------------------------------------------------------
 
 def detect_car_parts(context):
-    """Intelligently detect Body, Wheels (FL, FR, BL, BR), and Brakes from selection or scene."""
-    # First priority: currently selected mesh objects
+    """Intelligently detect Body, Wheels, Brakes, Doors, Trunk, Hood, and Windows."""
     candidates = [o for o in context.selected_objects if o.type == 'MESH']
     if len(candidates) < 2:
-        # Fallback: all visible mesh objects in scene
         candidates = [o for o in context.scene.objects if o.type == 'MESH']
 
     detected = {
@@ -107,6 +105,17 @@ def detect_car_parts(context):
         'brake_ft_r': None,
         'brake_bk_l': None,
         'brake_bk_r': None,
+        'door_ft_l': None,
+        'door_ft_r': None,
+        'door_bk_l': None,
+        'door_bk_r': None,
+        'hood': None,
+        'trunk': None,
+        'window_ft_l': None,
+        'window_ft_r': None,
+        'window_bk_l': None,
+        'window_bk_r': None,
+        'windshield': None,
     }
 
     if not candidates:
@@ -119,7 +128,6 @@ def detect_car_parts(context):
             detected['body'] = obj
             break
 
-    # If body not identified by name, find candidate with the largest bounding box volume
     if detected['body'] is None and len(candidates) > 4:
         def obj_volume(o):
             b = get_object_world_bounds(o)
@@ -128,16 +136,55 @@ def detect_car_parts(context):
 
     remaining = [o for o in candidates if o != detected['body']]
 
-    # 2. Detect Wheels by Name Patterns
-    wheel_pattern = re.compile(r'(wheel|tire|tyre|rim)', re.IGNORECASE)
-    wheel_candidates = [o for o in remaining if wheel_pattern.search(o.name)]
+    # 2. Detect Doors
+    door_pattern = re.compile(r'door', re.IGNORECASE)
+    door_candidates = [o for o in remaining if door_pattern.search(o.name)]
+    fl_pattern = re.compile(r'(\bft[._-]?l\b|front[._-]?left|fl\b|l[._-]?front)', re.IGNORECASE)
+    fr_pattern = re.compile(r'(\bft[._-]?r\b|front[._-]?right|fr\b|r[._-]?front)', re.IGNORECASE)
+    bl_pattern = re.compile(r'(\bbk[._-]?l\b|back[._-]?left|rear[._-]?left|rl\b|bl\b|l[._-]?rear)', re.IGNORECASE)
+    br_pattern = re.compile(r'(\bbk[._-]?r\b|back[._-]?right|rear[._-]?right|rr\b|br\b|r[._-]?rear)', re.IGNORECASE)
 
-    # Regex patterns for wheel positions:
-    # Front-Left: ft.l, front.*left, fl, l.*front
-    fl_pattern = re.compile(r'(\bft[._-]?l\b|front[._-]?left|fl\b|l[._-]?front|wheel.*ft.*l)', re.IGNORECASE)
-    fr_pattern = re.compile(r'(\bft[._-]?r\b|front[._-]?right|fr\b|r[._-]?front|wheel.*ft.*r)', re.IGNORECASE)
-    bl_pattern = re.compile(r'(\bbk[._-]?l\b|back[._-]?left|rear[._-]?left|rl\b|bl\b|l[._-]?rear|wheel.*bk.*l)', re.IGNORECASE)
-    br_pattern = re.compile(r'(\bbk[._-]?r\b|back[._-]?right|rear[._-]?right|rr\b|br\b|r[._-]?rear|wheel.*bk.*r)', re.IGNORECASE)
+    for o in door_candidates:
+        n = o.name
+        if detected['door_ft_l'] is None and fl_pattern.search(n):
+            detected['door_ft_l'] = o
+        elif detected['door_ft_r'] is None and fr_pattern.search(n):
+            detected['door_ft_r'] = o
+        elif detected['door_bk_l'] is None and bl_pattern.search(n):
+            detected['door_bk_l'] = o
+        elif detected['door_bk_r'] is None and br_pattern.search(n):
+            detected['door_bk_r'] = o
+
+    # 3. Detect Hood & Trunk
+    hood_pattern = re.compile(r'(hood|bonnet|engine[._-]?cover)', re.IGNORECASE)
+    trunk_pattern = re.compile(r'(trunk|boot|tailgate|rear[._-]?lid)', re.IGNORECASE)
+    for o in remaining:
+        if detected['hood'] is None and hood_pattern.search(o.name):
+            detected['hood'] = o
+        elif detected['trunk'] is None and trunk_pattern.search(o.name):
+            detected['trunk'] = o
+
+    # 4. Detect Windows / Glass
+    window_pattern = re.compile(r'(window|glass|windshield|windscreen)', re.IGNORECASE)
+    window_candidates = [o for o in remaining if window_pattern.search(o.name)]
+    windshield_pattern = re.compile(r'(windshield|windscreen|front[._-]?glass|glass[._-]?front)', re.IGNORECASE)
+
+    for o in window_candidates:
+        n = o.name
+        if detected['windshield'] is None and windshield_pattern.search(n):
+            detected['windshield'] = o
+        elif detected['window_ft_l'] is None and fl_pattern.search(n):
+            detected['window_ft_l'] = o
+        elif detected['window_ft_r'] is None and fr_pattern.search(n):
+            detected['window_ft_r'] = o
+        elif detected['window_bk_l'] is None and bl_pattern.search(n):
+            detected['window_bk_l'] = o
+        elif detected['window_bk_r'] is None and br_pattern.search(n):
+            detected['window_bk_r'] = o
+
+    # 5. Detect Wheels
+    wheel_pattern = re.compile(r'(wheel|tire|tyre|rim)', re.IGNORECASE)
+    wheel_candidates = [o for o in remaining if wheel_pattern.search(o.name) and o not in door_candidates and o not in window_candidates]
 
     for o in list(wheel_candidates):
         n = o.name
@@ -150,26 +197,18 @@ def detect_car_parts(context):
         elif detected['wheel_bk_r'] is None and br_pattern.search(n):
             detected['wheel_bk_r'] = o
 
-    # 3. Spatial Geometric Fallback for Wheels
-    # If 4 wheels weren't identified by name, use spatial coordinates!
-    # Rigacar coordinates: Front is -Y, Back is +Y, Left is +X, Right is -X.
+    # Spatial Geometric Fallback for Wheels (if 4 wheels not matched by name)
     assigned_wheels = {detected['wheel_ft_l'], detected['wheel_ft_r'], detected['wheel_bk_l'], detected['wheel_bk_r']} - {None}
     if len(assigned_wheels) < 4:
-        potential_wheels = wheel_candidates if len(wheel_candidates) >= 4 else remaining
-        # Filter out objects already assigned as body
-        potential_wheels = [o for o in potential_wheels if o != detected['body']]
-
+        potential_wheels = wheel_candidates if len(wheel_candidates) >= 4 else [
+            o for o in remaining if o != detected['body'] and o not in door_candidates and o not in window_candidates
+        ]
         if len(potential_wheels) >= 4:
-            # Sort 4 objects by bounds center
             sorted_by_y = sorted(potential_wheels[:4], key=lambda o: (get_object_world_center(o).y if get_object_world_center(o) else 0))
-            # 2 front wheels have smaller Y (-Y)
             front_two = sorted_by_y[:2]
-            # 2 back wheels have larger Y (+Y)
             back_two = sorted_by_y[2:]
 
-            # In Front: +X is Left, -X is Right
             front_sorted_x = sorted(front_two, key=lambda o: (get_object_world_center(o).x if get_object_world_center(o) else 0), reverse=True)
-            # In Back: +X is Left, -X is Right
             back_sorted_x = sorted(back_two, key=lambda o: (get_object_world_center(o).x if get_object_world_center(o) else 0), reverse=True)
 
             if detected['wheel_ft_l'] is None:
@@ -181,7 +220,7 @@ def detect_car_parts(context):
             if detected['wheel_bk_r'] is None:
                 detected['wheel_bk_r'] = back_sorted_x[1]
 
-    # 4. Detect Brakes
+    # 6. Detect Brakes
     brake_pattern = re.compile(r'(brake|caliper|rotor|disc)', re.IGNORECASE)
     brake_candidates = [o for o in remaining if brake_pattern.search(o.name)]
     for o in brake_candidates:
@@ -203,6 +242,7 @@ def detect_car_parts(context):
 # ---------------------------------------------------------------------------
 
 class RigacarCarPartsSettings(bpy.types.PropertyGroup):
+    # Core Car Parts
     body: bpy.props.PointerProperty(
         name="Body / Chassis",
         type=bpy.types.Object,
@@ -227,6 +267,82 @@ class RigacarCarPartsSettings(bpy.types.PropertyGroup):
         name="Back Right Wheel",
         type=bpy.types.Object,
         description="Back-Right (rear) wheel mesh object"
+    )
+
+    # Doors
+    show_doors: bpy.props.BoolProperty(
+        name="Include Doors",
+        description="Configure interactive opening doors",
+        default=False
+    )
+    door_ft_l: bpy.props.PointerProperty(
+        name="Front Left Door",
+        type=bpy.types.Object,
+        description="Front-Left door mesh object"
+    )
+    door_ft_r: bpy.props.PointerProperty(
+        name="Front Right Door",
+        type=bpy.types.Object,
+        description="Front-Right door mesh object"
+    )
+    door_bk_l: bpy.props.PointerProperty(
+        name="Back Left Door",
+        type=bpy.types.Object,
+        description="Back-Left (rear) door mesh object"
+    )
+    door_bk_r: bpy.props.PointerProperty(
+        name="Back Right Door",
+        type=bpy.types.Object,
+        description="Back-Right (rear) door mesh object"
+    )
+
+    # Hood & Trunk
+    show_hood_trunk: bpy.props.BoolProperty(
+        name="Include Hood & Trunk",
+        description="Configure opening hood/bonnet and trunk/boot",
+        default=False
+    )
+    hood: bpy.props.PointerProperty(
+        name="Hood / Bonnet",
+        type=bpy.types.Object,
+        description="Front hood or bonnet mesh object"
+    )
+    trunk: bpy.props.PointerProperty(
+        name="Trunk / Boot",
+        type=bpy.types.Object,
+        description="Rear trunk, boot, or tailgate mesh object"
+    )
+
+    # Windows & Glass
+    show_windows: bpy.props.BoolProperty(
+        name="Include Windows & Glass",
+        description="Configure window and glass objects",
+        default=False
+    )
+    window_ft_l: bpy.props.PointerProperty(
+        name="Front Left Window",
+        type=bpy.types.Object,
+        description="Front-Left window glass mesh object"
+    )
+    window_ft_r: bpy.props.PointerProperty(
+        name="Front Right Window",
+        type=bpy.types.Object,
+        description="Front-Right window glass mesh object"
+    )
+    window_bk_l: bpy.props.PointerProperty(
+        name="Back Left Window",
+        type=bpy.types.Object,
+        description="Back-Left window glass mesh object"
+    )
+    window_bk_r: bpy.props.PointerProperty(
+        name="Back Right Window",
+        type=bpy.types.Object,
+        description="Back-Right window glass mesh object"
+    )
+    windshield: bpy.props.PointerProperty(
+        name="Windshield / Fixed Glass",
+        type=bpy.types.Object,
+        description="Front windshield or fixed body glass mesh object"
     )
 
     # Brakes
@@ -256,46 +372,68 @@ class RigacarCarPartsSettings(bpy.types.PropertyGroup):
         description="Back-Right brake caliper mesh object"
     )
 
-    # Multi-Axle
-    show_multi_axle: bpy.props.BoolProperty(
-        name="Multi-Axle / Trucks",
-        description="Configure extra wheel axle pairs (e.g. 6x6, 8x8)",
-        default=False
-    )
-    nb_front_pairs: bpy.props.IntProperty(
-        name="Front Pairs",
-        description="Number of front wheel pairs",
-        default=1,
-        min=1,
-        max=5
-    )
-    nb_back_pairs: bpy.props.IntProperty(
-        name="Back Pairs",
-        description="Number of back wheel pairs",
-        default=1,
-        min=1,
-        max=5
-    )
-
 
 # ---------------------------------------------------------------------------
 # Rig Creation & Alignment Logic
 # ---------------------------------------------------------------------------
 
+def create_door_hinge_bone(edit_bones, bone_name, door_obj, parent_bone, is_left=True):
+    """Create a vertical hinge bone for a car door allowing natural rotation to open."""
+    b = get_object_world_bounds(door_obj)
+    if not b:
+        return None
+    # Front of door is min_y (in Rigacar -Y is front)
+    hinge_x = b[1] if is_left else b[0]
+    hinge_y = b[2]
+    hinge_z = (b[4] + b[5]) / 2.0
+    bone = edit_bones.new(bone_name)
+    bone.head = mathutils.Vector((hinge_x, hinge_y, hinge_z))
+    bone.tail = mathutils.Vector((hinge_x, hinge_y, b[5]))
+    bone.parent = parent_bone
+    bone.use_deform = True
+    return bone
+
+
+def create_hood_hinge_bone(edit_bones, hood_obj, parent_bone):
+    """Create a horizontal hinge bone along the rear/windshield edge of the hood."""
+    b = get_object_world_bounds(hood_obj)
+    if not b:
+        return None
+    center_x = (b[0] + b[1]) / 2.0
+    hinge_y = b[3]  # Rear of hood (+Y)
+    hinge_z = b[5]
+    bone = edit_bones.new('Hood')
+    bone.head = mathutils.Vector((center_x, hinge_y, hinge_z))
+    bone.tail = mathutils.Vector((center_x + 0.3, hinge_y, hinge_z))
+    bone.parent = parent_bone
+    bone.use_deform = True
+    return bone
+
+
+def create_trunk_hinge_bone(edit_bones, trunk_obj, parent_bone):
+    """Create a horizontal hinge bone along the front/top edge of the trunk."""
+    b = get_object_world_bounds(trunk_obj)
+    if not b:
+        return None
+    center_x = (b[0] + b[1]) / 2.0
+    hinge_y = b[2]  # Front of trunk (-Y relative to rear)
+    hinge_z = b[5]
+    bone = edit_bones.new('Trunk')
+    bone.head = mathutils.Vector((center_x, hinge_y, hinge_z))
+    bone.tail = mathutils.Vector((center_x + 0.3, hinge_y, hinge_z))
+    bone.parent = parent_bone
+    bone.use_deform = True
+    return bone
+
+
 def build_rig_from_parts(context, generate_anim=False):
     """Create deformation rig sized and aligned precisely to the chosen parts, then parent parts."""
     settings = context.scene.rigacar_car_parts
 
-    # Calculate Body Position & Dimensions
     body_center = get_object_world_center(settings.body) or mathutils.Vector((0.0, 0.0, 0.8))
     body_bounds = get_object_world_bounds(settings.body)
-    if body_bounds:
-        body_length = max(body_bounds[3] - body_bounds[2], 1.0)
-    else:
-        body_length = 2.0
+    body_length = max(body_bounds[3] - body_bounds[2], 1.0) if body_bounds else 2.0
 
-    # Calculate Wheel Positions & Radii
-    # Default fallbacks if wheels not selected
     wheel_positions = {
         'Wheel.Ft.L': get_object_world_center(settings.wheel_ft_l) or mathutils.Vector((0.9, -1.8, 0.4)),
         'Wheel.Ft.R': get_object_world_center(settings.wheel_ft_r) or mathutils.Vector((-0.9, -1.8, 0.4)),
@@ -310,7 +448,6 @@ def build_rig_from_parts(context, generate_anim=False):
         'Wheel.Bk.R': get_wheel_radius(settings.wheel_bk_r),
     }
 
-    # Brakes
     has_brakes = settings.show_brakes
     brake_positions = {}
     if has_brakes:
@@ -321,12 +458,10 @@ def build_rig_from_parts(context, generate_anim=False):
             'WheelBrake.Bk.R': get_object_world_center(settings.brake_bk_r) or (wheel_positions['Wheel.Bk.R'] + mathutils.Vector((0.1, 0, 0))),
         }
 
-    # Create new Armature data and Object
     amt = bpy.data.armatures.new('Car Rig Data')
     amt['Car Rig'] = False
     rig = bpy_extras.object_utils.object_data_add(context, amt, name='Car Rig')
 
-    # Switch to EDIT mode to create deformation bones
     bpy.ops.object.mode_set(mode='EDIT')
     edit_bones = rig.data.edit_bones
 
@@ -341,8 +476,7 @@ def build_rig_from_parts(context, generate_anim=False):
         b_w = edit_bones.new('DEF-' + w_name)
         b_w.head = w_pos.copy()
         b_w.tail = w_pos.copy()
-        radius = wheel_radii.get(w_name, 0.4)
-        b_w.tail.y += radius
+        b_w.tail.y += wheel_radii.get(w_name, 0.4)
 
     # 3. DEF-WheelBrake bones
     if has_brakes:
@@ -352,12 +486,29 @@ def build_rig_from_parts(context, generate_anim=False):
             b_brk.tail = b_pos.copy()
             b_brk.tail.y += 0.2
 
-    # Deselect all edit bones and switch to OBJECT mode
+    # 4. Doors Hinge Bones
+    if settings.show_doors:
+        if settings.door_ft_l:
+            create_door_hinge_bone(edit_bones, 'Door.Ft.L', settings.door_ft_l, b_body, is_left=True)
+        if settings.door_ft_r:
+            create_door_hinge_bone(edit_bones, 'Door.Ft.R', settings.door_ft_r, b_body, is_left=False)
+        if settings.door_bk_l:
+            create_door_hinge_bone(edit_bones, 'Door.Bk.L', settings.door_bk_l, b_body, is_left=True)
+        if settings.door_bk_r:
+            create_door_hinge_bone(edit_bones, 'Door.Bk.R', settings.door_bk_r, b_body, is_left=False)
+
+    # 5. Hood & Trunk Hinge Bones
+    if settings.show_hood_trunk:
+        if settings.hood:
+            create_hood_hinge_bone(edit_bones, settings.hood, b_body)
+        if settings.trunk:
+            create_trunk_hinge_bone(edit_bones, settings.trunk, b_body)
+
     for b in edit_bones:
         b.select = False
     bpy.ops.object.mode_set(mode='OBJECT')
 
-    # 4. Parent Chosen Objects to Bones
+    # 6. Parent Chosen Objects
     if settings.body:
         parent_object_to_bone(settings.body, rig, 'DEF-Body')
     if settings.wheel_ft_l:
@@ -379,11 +530,44 @@ def build_rig_from_parts(context, generate_anim=False):
         if settings.brake_bk_r:
             parent_object_to_bone(settings.brake_bk_r, rig, 'DEF-WheelBrake.Bk.R')
 
-    # Activate Rig
+    # Parent Doors
+    if settings.show_doors:
+        if settings.door_ft_l:
+            parent_object_to_bone(settings.door_ft_l, rig, 'Door.Ft.L')
+        if settings.door_ft_r:
+            parent_object_to_bone(settings.door_ft_r, rig, 'Door.Ft.R')
+        if settings.door_bk_l:
+            parent_object_to_bone(settings.door_bk_l, rig, 'Door.Bk.L')
+        if settings.door_bk_r:
+            parent_object_to_bone(settings.door_bk_r, rig, 'Door.Bk.R')
+
+    # Parent Hood & Trunk
+    if settings.show_hood_trunk:
+        if settings.hood:
+            parent_object_to_bone(settings.hood, rig, 'Hood')
+        if settings.trunk:
+            parent_object_to_bone(settings.trunk, rig, 'Trunk')
+
+    # Parent Windows (door windows to doors so they swing open together, fixed windows to body)
+    if settings.show_windows:
+        if settings.window_ft_l:
+            target_bone = 'Door.Ft.L' if ('Door.Ft.L' in rig.data.bones) else 'DEF-Body'
+            parent_object_to_bone(settings.window_ft_l, rig, target_bone)
+        if settings.window_ft_r:
+            target_bone = 'Door.Ft.R' if ('Door.Ft.R' in rig.data.bones) else 'DEF-Body'
+            parent_object_to_bone(settings.window_ft_r, rig, target_bone)
+        if settings.window_bk_l:
+            target_bone = 'Door.Bk.L' if ('Door.Bk.L' in rig.data.bones) else 'DEF-Body'
+            parent_object_to_bone(settings.window_bk_l, rig, target_bone)
+        if settings.window_bk_r:
+            target_bone = 'Door.Bk.R' if ('Door.Bk.R' in rig.data.bones) else 'DEF-Body'
+            parent_object_to_bone(settings.window_bk_r, rig, target_bone)
+        if settings.windshield:
+            parent_object_to_bone(settings.windshield, rig, 'DEF-Body')
+
     bpy.context.view_layer.objects.active = rig
     rig.select_set(True)
 
-    # 5. Optionally generate animation rig immediately
     if generate_anim:
         bpy.ops.object.mode_set(mode='POSE')
         bpy.ops.pose.car_animation_rig_generate()
@@ -415,6 +599,36 @@ def attach_parts_to_existing_rig(context, rig):
         if settings.brake_bk_l and parent_object_to_bone(settings.brake_bk_l, rig, 'DEF-WheelBrake.Bk.L'):
             attached += 1
         if settings.brake_bk_r and parent_object_to_bone(settings.brake_bk_r, rig, 'DEF-WheelBrake.Bk.R'):
+            attached += 1
+
+    if settings.show_doors:
+        for slot, bone in (('door_ft_l', 'Door.Ft.L'), ('door_ft_r', 'Door.Ft.R'),
+                           ('door_bk_l', 'Door.Bk.L'), ('door_bk_r', 'Door.Bk.R')):
+            obj = getattr(settings, slot, None)
+            if obj:
+                tgt = bone if bone in rig.data.bones else 'DEF-Body'
+                if parent_object_to_bone(obj, rig, tgt):
+                    attached += 1
+
+    if settings.show_hood_trunk:
+        if settings.hood:
+            tgt = 'Hood' if 'Hood' in rig.data.bones else 'DEF-Body'
+            if parent_object_to_bone(settings.hood, rig, tgt):
+                attached += 1
+        if settings.trunk:
+            tgt = 'Trunk' if 'Trunk' in rig.data.bones else 'DEF-Body'
+            if parent_object_to_bone(settings.trunk, rig, tgt):
+                attached += 1
+
+    if settings.show_windows:
+        for slot, bone in (('window_ft_l', 'Door.Ft.L'), ('window_ft_r', 'Door.Ft.R'),
+                           ('window_bk_l', 'Door.Bk.L'), ('window_bk_r', 'Door.Bk.R')):
+            obj = getattr(settings, slot, None)
+            if obj:
+                tgt = bone if bone in rig.data.bones else 'DEF-Body'
+                if parent_object_to_bone(obj, rig, tgt):
+                    attached += 1
+        if settings.windshield and parent_object_to_bone(settings.windshield, rig, 'DEF-Body'):
             attached += 1
 
     return attached
@@ -468,7 +682,7 @@ def snap_rig_bones_to_parts(context, rig):
 class RIGACAR_OT_autoDetectParts(bpy.types.Operator):
     bl_idname = "rigacar.auto_detect_parts"
     bl_label = "Auto-Detect Car Parts"
-    bl_description = "Automatically detects Body, Wheels, and Brakes from selected objects or scene meshes"
+    bl_description = "Automatically detects Body, Wheels, Doors, Trunk, Hood, Windows, and Brakes from selection or scene"
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
@@ -476,30 +690,18 @@ class RIGACAR_OT_autoDetectParts(bpy.types.Operator):
         settings = context.scene.rigacar_car_parts
 
         count = 0
-        if detected['body']:
-            settings.body = detected['body']
-            count += 1
-        if detected['wheel_ft_l']:
-            settings.wheel_ft_l = detected['wheel_ft_l']
-            count += 1
-        if detected['wheel_ft_r']:
-            settings.wheel_ft_r = detected['wheel_ft_r']
-            count += 1
-        if detected['wheel_bk_l']:
-            settings.wheel_bk_l = detected['wheel_bk_l']
-            count += 1
-        if detected['wheel_bk_r']:
-            settings.wheel_bk_r = detected['wheel_bk_r']
-            count += 1
-
-        brakes_found = False
-        for k in ('brake_ft_l', 'brake_ft_r', 'brake_bk_l', 'brake_bk_r'):
-            if detected[k]:
-                setattr(settings, k, detected[k])
-                brakes_found = True
+        for k, v in detected.items():
+            if v is not None:
+                setattr(settings, k, v)
                 count += 1
 
-        if brakes_found:
+        if any(detected[k] for k in ('door_ft_l', 'door_ft_r', 'door_bk_l', 'door_bk_r')):
+            settings.show_doors = True
+        if detected['hood'] or detected['trunk']:
+            settings.show_hood_trunk = True
+        if any(detected[k] for k in ('window_ft_l', 'window_ft_r', 'window_bk_l', 'window_bk_r', 'windshield')):
+            settings.show_windows = True
+        if any(detected[k] for k in ('brake_ft_l', 'brake_ft_r', 'brake_bk_l', 'brake_bk_r')):
             settings.show_brakes = True
 
         if count > 0:
@@ -522,7 +724,7 @@ class RIGACAR_OT_createRigFromParts(bpy.types.Operator):
     )
 
     def execute(self, context):
-        rig = build_rig_from_parts(context, generate_anim=self.generate_animation_rig)
+        build_rig_from_parts(context, generate_anim=self.generate_animation_rig)
         if self.generate_animation_rig:
             self.report({'INFO'}, "Car animation rig created and generated successfully!")
         else:
@@ -575,15 +777,14 @@ class RIGACAR_OT_clearParts(bpy.types.Operator):
 
     def execute(self, context):
         settings = context.scene.rigacar_car_parts
-        settings.body = None
-        settings.wheel_ft_l = None
-        settings.wheel_ft_r = None
-        settings.wheel_bk_l = None
-        settings.wheel_bk_r = None
-        settings.brake_ft_l = None
-        settings.brake_ft_r = None
-        settings.brake_bk_l = None
-        settings.brake_bk_r = None
+        for k in (
+            'body', 'wheel_ft_l', 'wheel_ft_r', 'wheel_bk_l', 'wheel_bk_r',
+            'door_ft_l', 'door_ft_r', 'door_bk_l', 'door_bk_r',
+            'hood', 'trunk',
+            'window_ft_l', 'window_ft_r', 'window_bk_l', 'window_bk_r', 'windshield',
+            'brake_ft_l', 'brake_ft_r', 'brake_bk_l', 'brake_bk_r'
+        ):
+            setattr(settings, k, None)
         self.report({'INFO'}, "Cleared car parts selection.")
         return {'FINISHED'}
 
@@ -625,7 +826,6 @@ class RIGACAR_PT_carPartsSetupView(bpy.types.Panel):
         # 2. Wheels Section
         box = layout.box()
         box.label(text="Wheels", icon='ORIENTATION_GIMBAL')
-
         col = box.column(align=True)
         col.prop(settings, "wheel_ft_l", text="Front Left")
         col.prop(settings, "wheel_ft_r", text="Front Right")
@@ -633,8 +833,37 @@ class RIGACAR_PT_carPartsSetupView(bpy.types.Panel):
         col.prop(settings, "wheel_bk_l", text="Back Left")
         col.prop(settings, "wheel_bk_r", text="Back Right")
 
-        # 3. Optional Brakes Section
-        layout.prop(settings, "show_brakes", text="Include Brakes / Calipers", icon='RESTRICT_SELECT_OFF' if settings.show_brakes else 'RESTRICT_SELECT_ON')
+        # 3. Doors Section
+        layout.prop(settings, "show_doors", text="Doors", icon='RESTRICT_SELECT_OFF' if settings.show_doors else 'RESTRICT_SELECT_ON')
+        if settings.show_doors:
+            d_box = layout.box()
+            d_col = d_box.column(align=True)
+            d_col.prop(settings, "door_ft_l", text="Front Left Door")
+            d_col.prop(settings, "door_ft_r", text="Front Right Door")
+            d_col.prop(settings, "door_bk_l", text="Back Left Door")
+            d_col.prop(settings, "door_bk_r", text="Back Right Door")
+
+        # 4. Hood & Trunk Section
+        layout.prop(settings, "show_hood_trunk", text="Hood & Trunk", icon='RESTRICT_SELECT_OFF' if settings.show_hood_trunk else 'RESTRICT_SELECT_ON')
+        if settings.show_hood_trunk:
+            ht_box = layout.box()
+            ht_col = ht_box.column(align=True)
+            ht_col.prop(settings, "hood", text="Hood / Bonnet")
+            ht_col.prop(settings, "trunk", text="Trunk / Boot")
+
+        # 5. Windows & Glass Section
+        layout.prop(settings, "show_windows", text="Windows & Glass", icon='RESTRICT_SELECT_OFF' if settings.show_windows else 'RESTRICT_SELECT_ON')
+        if settings.show_windows:
+            w_box = layout.box()
+            w_col = w_box.column(align=True)
+            w_col.prop(settings, "window_ft_l", text="Front Left Window")
+            w_col.prop(settings, "window_ft_r", text="Front Right Window")
+            w_col.prop(settings, "window_bk_l", text="Back Left Window")
+            w_col.prop(settings, "window_bk_r", text="Back Right Window")
+            w_col.prop(settings, "windshield", text="Windshield / Fixed Glass")
+
+        # 6. Brakes Section
+        layout.prop(settings, "show_brakes", text="Brakes / Calipers", icon='RESTRICT_SELECT_OFF' if settings.show_brakes else 'RESTRICT_SELECT_ON')
         if settings.show_brakes:
             b_box = layout.box()
             b_col = b_box.column(align=True)
@@ -645,9 +874,8 @@ class RIGACAR_PT_carPartsSetupView(bpy.types.Panel):
 
         layout.separator()
 
-        # 4. Action Buttons depending on current context
+        # 7. Action Buttons depending on current context
         if not is_car_rig:
-            # No car rig active yet: give buttons to create
             col = layout.column(align=True)
             col.scale_y = 1.3
             op = col.operator(RIGACAR_OT_createRigFromParts.bl_idname, text="Create Deformation Rig", icon='ARMATURE_DATA')
@@ -656,7 +884,6 @@ class RIGACAR_PT_carPartsSetupView(bpy.types.Panel):
             op2 = col.operator(RIGACAR_OT_createRigFromParts.bl_idname, text="Create & Generate Animation Rig", icon='AUTO')
             op2.generate_animation_rig = True
         elif not is_generated:
-            # Deformation rig active, but animation rig not yet generated
             box = layout.box()
             box.label(text="Deformation Rig Active", icon='CHECKMARK')
             col = box.column(align=True)
@@ -669,7 +896,6 @@ class RIGACAR_PT_carPartsSetupView(bpy.types.Panel):
             col2.scale_y = 1.4
             col2.operator("pose.car_animation_rig_generate", text="Generate Animation Rig", icon='AUTO')
         else:
-            # Animation rig is fully generated
             box = layout.box()
             box.label(text="Animation Rig Active", icon='CHECKMARK')
             col = box.column(align=True)
