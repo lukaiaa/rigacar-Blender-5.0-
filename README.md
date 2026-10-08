@@ -11,6 +11,10 @@ Rigacar quickly generates complete vehicle animation rigs with automated wheel r
 
 ## 🚀 What's New in this Edition
 
+<p align="center">
+  <img src="screenshots/car_parts_setup.png" alt="Rigacar Car Parts Setup UI in Blender" width="350"/>
+</p>
+
 * **Full Blender 5.1+ Compatibility:**
   * Updated to use Blender's new **Slotted Actions / `ActionChannelbag` API** (legacy `action.fcurves` deprecation fix).
   * Migrated from legacy layers to **Bone Collections** (`CarRig_Default_Ctrls`, `CarRig_Def_Bone`, etc.).
